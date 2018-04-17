@@ -57,7 +57,7 @@ RCT_EXPORT_MODULE(ALPRCameraManager);
     self.previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:self.session];
     self.previewLayer.needsDisplayOnBoundsChange = YES;
 #endif
-    
+
     if(!self.camera){
         self.camera = [[ALPRCamera alloc] initWithManager:self bridge:self.bridge];
     }
@@ -132,7 +132,7 @@ RCT_CUSTOM_VIEW_PROPERTY(captureQuality, NSInteger, ALPRCamera) {
             qualityString = AVCaptureSessionPreset640x480;
             break;
     }
-    
+
     [self setCaptureQuality:qualityString];
 }
 
@@ -151,7 +151,7 @@ RCT_CUSTOM_VIEW_PROPERTY(aspect, NSInteger, ALPRCamera) {
             aspectString = AVLayerVideoGravityResize;
             break;
     }
-    
+
     self.previewLayer.videoGravity = aspectString;
 }
 
@@ -161,7 +161,7 @@ RCT_CUSTOM_VIEW_PROPERTY(torchMode, NSInteger, ALPRCamera) {
         NSInteger torchMode = [RCTConvert NSInteger:json];
         AVCaptureDevice *device = [self.videoCaptureDeviceInput device];
         NSError *error = nil;
-        
+
         if (![device hasTorch]) return;
         if (![device lockForConfiguration:&error]) {
             NSLog(@"%@", error);
@@ -185,7 +185,7 @@ RCT_EXPORT_VIEW_PROPERTY(onPlateRecognized, RCTBubblingEventBlock)
 RCT_EXPORT_METHOD(checkVideoAuthorizationStatus:(RCTPromiseResolveBlock)resolve
                   reject:(__unused RCTPromiseRejectBlock)reject) {
     __block NSString *mediaType = AVMediaTypeVideo;
-    
+
     [AVCaptureDevice requestAccessForMediaType:mediaType completionHandler:^(BOOL granted) {
         resolve(@(granted));
     }];
@@ -199,20 +199,20 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
             return;
         }
         self.isProcessingFrame = YES;
-        
+
         CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
         CVPixelBufferLockBaseAddress(imageBuffer, 0);
-        
+
         // Y_PLANE
         int plane = 0;
         char *planeBaseAddress = (char *)CVPixelBufferGetBaseAddressOfPlane(imageBuffer, plane);
-        
+
         size_t width = CVPixelBufferGetWidthOfPlane(imageBuffer, plane);
         size_t height = CVPixelBufferGetHeightOfPlane(imageBuffer, plane);
         size_t bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(imageBuffer, plane);
-        
+
         int numChannels = 1;
-        
+
         cv::Mat src = cv::Mat(cvSize((int)width, (int)height), CV_8UC(numChannels), planeBaseAddress, (int)bytesPerRow);
         int rotate = 0;
         if (deviceOrientation == UIDeviceOrientationPortrait) {
@@ -223,9 +223,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
             rotate = 2;
         }
         rot90(src, rotate);
-        
+
 //        NSDate *date = [NSDate date];
-        
+
         [[PlateScanner sharedInstance] scanImage:src onSuccess:^(PlateResult *result) {
             if (result && self.camera.onPlateRecognized) {
                 self.camera.onPlateRecognized(@{
@@ -233,15 +233,15 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                     @"plate": result.plate
                 });
             }
-            
+
             CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
 //            NSLog(@"Time: %f", -[date timeIntervalSinceNow]);
             self.isProcessingFrame = NO;
-            
+
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self.camera updatePlateBorder:result orientation:deviceOrientation];
             });
-            
+
         } onFailure:^(NSError *err) {
 //            NSLog(@"Error: %@", err);
             CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
@@ -258,9 +258,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         if (self.presetCamera == AVCaptureDevicePositionUnspecified) {
             self.presetCamera = AVCaptureDevicePositionBack;
         }
-        
+
         AVCaptureVideoDataOutput *videoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
-        
+
         // The algorithm is going to convert to grayscale anyways, so let's use a format that makes it
         // easy to extract
         NSDictionary *videoOutputSettings = @{
@@ -270,12 +270,12 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         videoDataOutput.alwaysDiscardsLateVideoFrames = YES;
         videoDataOutputQueue = dispatch_queue_create("OpenALPR-video-queue", NULL);
         [videoDataOutput setSampleBufferDelegate:self queue:videoDataOutputQueue];
-        
-        
+
+
         if ([self.session canAddOutput:videoDataOutput]) {
             [self.session addOutput:videoDataOutput];
         }
-        
+
         __weak ALPRCameraManager *weakSelf = self;
         [self setRuntimeErrorHandlingObserver:[NSNotificationCenter.defaultCenter addObserverForName:AVCaptureSessionRuntimeErrorNotification object:self.session queue:nil usingBlock:^(NSNotification *note) {
             ALPRCameraManager *strongSelf = weakSelf;
@@ -284,7 +284,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                 [strongSelf.session startRunning];
             });
         }]];
-        
+
         [self.session startRunning];
         [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(deviceDidRotate:) name:UIDeviceOrientationDidChangeNotification object:nil];
@@ -295,7 +295,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 - (void)deviceDidRotate:(NSNotification *)notification
 {
     UIDeviceOrientation currentOrientation = [[UIDevice currentDevice] orientation];
-    
+
     // Ignore changes in device orientation if unknown, face up, or face down.
     if (!UIDeviceOrientationIsValidInterfaceOrientation(currentOrientation)) {
         return;
@@ -316,11 +316,11 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         for(AVCaptureInput *input in self.session.inputs) {
             [self.session removeInput:input];
         }
-        
+
         for(AVCaptureOutput *output in self.session.outputs) {
             [self.session removeOutput:output];
         }
-        
+
         [[NSNotificationCenter defaultCenter] removeObserver:self];
         if ([[UIDevice currentDevice] isGeneratingDeviceOrientationNotifications]) {
             [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
@@ -331,32 +331,32 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 - (void)initializeCaptureSessionInput:(NSString *)type {
     dispatch_async(self.sessionQueue, ^{
         [self.session beginConfiguration];
-        
+
         NSError *error = nil;
         AVCaptureDevice *captureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-        
+
         if (captureDevice == nil) {
             return;
         }
-        
+
         AVCaptureDeviceInput *captureDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:captureDevice error:&error];
-        
+
         if (error || captureDeviceInput == nil) {
             NSLog(@"%@", error);
             return;
         }
-        
+
         if (type == AVMediaTypeVideo) {
             [self.session removeInput:self.videoCaptureDeviceInput];
         }
-        
+
         if ([self.session canAddInput:captureDeviceInput]) {
             [self.session addInput:captureDeviceInput];
             if (type == AVMediaTypeVideo) {
                 self.videoCaptureDeviceInput = captureDeviceInput;
             }
         }
-        
+
         [self.session commitConfiguration];
     });
 }
@@ -423,13 +423,13 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 - (void)setCaptureQuality:(NSString *)quality
 {
 #if !(TARGET_IPHONE_SIMULATOR)
-    if (quality) {
-        [self.session beginConfiguration];
-        if ([self.session canSetSessionPreset:quality]) {
-            self.session.sessionPreset = quality;
-        }
-        [self.session commitConfiguration];
-    }
+    // if (quality) {
+    //     [self.session beginConfiguration];
+    //     if ([self.session canSetSessionPreset:quality]) {
+    //         self.session.sessionPreset = quality;
+    //     }
+    //     [self.session commitConfiguration];
+    // }
 #endif
 }
 
